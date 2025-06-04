@@ -7,6 +7,8 @@ interface AuthContextType {
     isAuthenticated: boolean;
     user: LoginCredentials | null;
     isLoadingSession: boolean;
+    isPostLoginTransition: boolean;
+    setIsPostLoginTransition: (value: boolean) => void;
     login: (credentials: LoginCredentials) => Promise<void>;
     logout: () => Promise<void>;
 }
@@ -31,6 +33,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [user, setUser] = useState<LoginCredentials | null>(null);
     const [isLoadingSession, setIsLoadingSession] = useState(true);
+    const [isPostLoginTransition, setIsPostLoginTransition] = useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -96,6 +99,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setIsAuthenticated(true);
             setUser(credentials);
             localStorage.setItem('user', JSON.stringify(credentials));
+            setIsPostLoginTransition(true);
             navigate('/search');
         } catch (error) {
             console.error('Login failed:', error);
@@ -120,7 +124,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     return (
-        <AuthContext.Provider value={{ isAuthenticated, user, login, logout, isLoadingSession }}>
+        <AuthContext.Provider value={{ isAuthenticated, user, login, logout, isLoadingSession, isPostLoginTransition, setIsPostLoginTransition }}>
             {children}
         </AuthContext.Provider>
     );

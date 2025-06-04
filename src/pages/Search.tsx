@@ -33,6 +33,8 @@ import { Dog, SearchFilters as SearchFiltersType, SearchResponse } from '../type
 import Header from '../components/Header';
 import MatchDialog from '../components/MatchDialog';
 import SearchFiltersComponent from '../components/SearchFilters';
+import PostLoginAnimation from '../components/PostLoginAnimation';
+import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme/theme';
 
 // Default filter values
@@ -50,6 +52,7 @@ const Search: React.FC = () => {
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
     const [showScrollTop, setShowScrollTop] = useState(false);
+    const auth = useAuth();
 
     // Initialize state from localStorage if available
     const [filters, setFilters] = useState<SearchFiltersType>(() => {
@@ -258,6 +261,20 @@ const Search: React.FC = () => {
             isGeneratingMatch={isGeneratingMatch}
         />
     );
+
+    // Main loading state for session or initial data fetch
+    if (auth.isLoadingSession) {
+        return (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: colors.background.gradient }}>
+                <CircularProgress sx={{ color: colors.primary.main }} size={80} />
+            </Box>
+        );
+    }
+
+    // Post-login animation state
+    if (auth.isPostLoginTransition) {
+        return <PostLoginAnimation onAnimationComplete={() => auth.setIsPostLoginTransition(false)} />;
+    }
 
     return (
         <Box sx={{ 
