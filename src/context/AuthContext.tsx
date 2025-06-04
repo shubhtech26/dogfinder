@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 interface AuthContextType {
     isAuthenticated: boolean;
     user: LoginCredentials | null;
+    isLoadingSession: boolean;
     login: (credentials: LoginCredentials) => Promise<void>;
     logout: () => Promise<void>;
 }
@@ -29,38 +30,65 @@ const validateSession = async (): Promise<boolean> => {
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [user, setUser] = useState<LoginCredentials | null>(null);
+    const [isLoadingSession, setIsLoadingSession] = useState(true);
     const navigate = useNavigate();
 
-    // Validate session on mount and set up periodic check
     useEffect(() => {
+        let isMounted = true;
+
         const checkSession = async () => {
+            if (!isMounted) return;
+            setIsLoadingSession(true);
             const isValid = await validateSession();
-            
-            // If session is invalid but we think we're authenticated
-            if (!isValid && isAuthenticated) {
-                setIsAuthenticated(false);
-                setUser(null);
-                localStorage.removeItem('user');
-                navigate('/');
-            }
-            
-            // If session is valid but we think we're not authenticated
-            if (isValid && !isAuthenticated) {
-                const storedUser = localStorage.getItem('user');
-                if (storedUser) {
-                    setUser(JSON.parse(storedUser));
-                    setIsAuthenticated(true);
+
+            if (isMounted) {
+                setIsAuthenticated(isValid);
+                if (isValid) {
+                    const storedUser = localStorage.getItem('user');
+                    if (storedUser) {
+                        try {
+                            setUser(JSON.parse(storedUser));
+                        } catch (e) {
+                            localStorage.removeItem('user');
+                            setUser(null);
+                        }
+                    }
+                } else {
+                    setUser(null);
+                    localStorage.removeItem('user');
                 }
+                setIsLoadingSession(false);
             }
         };
 
         checkSession();
 
-        // Check session every 5 minutes
-        const intervalId = setInterval(checkSession, 5 * 60 * 1000);
+        const intervalId = setInterval(async () => {
+            const isValid = await validateSession();
+            if (isMounted && !isValid && isAuthenticated) {
+                setIsAuthenticated(false);
+                setUser(null);
+                localStorage.removeItem('user');
+                localStorage.removeItem('favorites');
+                localStorage.removeItem('searchFilters');
+                localStorage.removeItem('currentPage');
+                if (window.location.pathname !== '/') {
+                    navigate('/');
+                }
+            } else if (isMounted && isValid && !isAuthenticated) {
+                setIsAuthenticated(true);
+                const storedUser = localStorage.getItem('user');
+                if (storedUser) {
+                    try { setUser(JSON.parse(storedUser)); } catch (e) { localStorage.removeItem('user'); setUser(null); }
+                }
+            }
+        }, 5 * 60 * 1000);
 
-        return () => clearInterval(intervalId);
-    }, [isAuthenticated, navigate]);
+        return () => {
+            isMounted = false;
+            clearInterval(intervalId);
+        };
+    }, [navigate]);
 
     const login = async (credentials: LoginCredentials) => {
         try {
@@ -78,19 +106,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const logout = async () => {
         try {
             await apiLogout();
+        } catch (error) {
+            console.error('API Logout failed, proceeding with client logout:', error);
+        } finally {
             setIsAuthenticated(false);
             setUser(null);
             localStorage.removeItem('user');
             localStorage.removeItem('favorites');
+            localStorage.removeItem('searchFilters');
+            localStorage.removeItem('currentPage');
             navigate('/');
-        } catch (error) {
-            console.error('Logout failed:', error);
-            throw error;
         }
     };
 
     return (
-        <AuthContext.Provider value={{ isAuthenticated, user, login, logout }}>
+        <AuthContext.Provider value={{ isAuthenticated, user, login, logout, isLoadingSession }}>
             {children}
         </AuthContext.Provider>
     );

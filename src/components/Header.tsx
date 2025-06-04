@@ -2,7 +2,6 @@ import React from 'react';
 import { AppBar, Toolbar, Typography, Box, useTheme } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useAuth } from '../context/AuthContext';
-import MatchButton from './MatchButton';
 import { colors } from '../theme/theme';
 import { Pets } from '@mui/icons-material';
 
@@ -20,27 +19,16 @@ const StyledToolbar = styled(Toolbar)({
     padding: '8px 24px',
 });
 
-interface Props {
-    favoriteCount: number;
-    onGenerateMatch: () => Promise<void>; // Ensure this is a promise for async handling
-}
+// Props are no longer needed as MatchButton is removed
+// interface Props {
+//     favoriteCount: number;
+//     onGenerateMatch: () => Promise<void>; 
+// }
 
-const Header: React.FC<Props> = ({ favoriteCount, onGenerateMatch }) => {
+const Header: React.FC = () => { // Removed Props
     const { user, logout } = useAuth();
     const theme = useTheme();
-    const [isMatchLoading, setIsMatchLoading] = React.useState(false);
-
-    const handleGenerateMatch = async () => {
-        setIsMatchLoading(true);
-        try {
-            await onGenerateMatch();
-        } catch (error) {
-            console.error("Error generating match from header:", error);
-            // Optionally, show an error to the user here
-        } finally {
-            setIsMatchLoading(false);
-        }
-    };
+    // Removed isMatchLoading and handleGenerateMatchInternal as MatchButton is moved
 
     return (
         <GlassAppBar position="fixed">
@@ -55,7 +43,7 @@ const Header: React.FC<Props> = ({ favoriteCount, onGenerateMatch }) => {
                             letterSpacing: '0.5px',
                         }}
                     >
-                        DoggyMatch
+                        FetchMate
                     </Typography>
                 </Box>
 
@@ -70,11 +58,7 @@ const Header: React.FC<Props> = ({ favoriteCount, onGenerateMatch }) => {
                         Welcome, {user?.name}!
                     </Typography>
 
-                    <MatchButton
-                        favoriteCount={favoriteCount}
-                        isLoading={isMatchLoading} // Use the specific loading state for the match button
-                        onClick={handleGenerateMatch}
-                    />
+                    {/* MatchButton and its related logic removed from here */}
 
                     <Typography
                         onClick={logout}

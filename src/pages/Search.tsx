@@ -86,6 +86,7 @@ const Search: React.FC = () => {
         return savedZipCode || '';
     });
     const [searchError, setSearchError] = useState<string | null>(null);
+    const [isGeneratingMatch, setIsGeneratingMatch] = useState(false);
 
     // Persist state changes to localStorage
     useEffect(() => {
@@ -191,12 +192,17 @@ const Search: React.FC = () => {
         });
     };
 
+    const handleClearFavorite = useCallback(() => {
+        setFavorites(new Set());
+    }, []);
+
     const handleGenerateMatch = async () => {
         if (favorites.size === 0) {
             setSearchError('Please select a favorite dog first to find a match.');
             return;
         }
         setSearchError(null);
+        setIsGeneratingMatch(true);
         try {
             const match = await generateMatch(Array.from(favorites));
             const [matchedDogDetails] = await getDogsByIds([match.match]);
@@ -205,10 +211,12 @@ const Search: React.FC = () => {
         } catch (error) {
             console.error('Failed to generate match:', error);
             setSearchError(error instanceof Error ? error.message : 'Failed to generate match. Please try again.');
+        } finally {
+            setIsGeneratingMatch(false);
         }
     };
 
-    const clearSearch = useCallback(() => {
+    const clearAllFiltersAndFavorites = useCallback(() => {
         setFilters(defaultFilters);
         setZipCode('');
         setPage(1);
@@ -242,21 +250,45 @@ const Search: React.FC = () => {
             filters={filters} 
             breeds={breedsData} 
             onFiltersChange={handleFiltersChange} 
-            onClear={clearSearch} 
+            onClearAllFilters={clearAllFiltersAndFavorites}
             isLoading={isLoadingPrimary}
+            favoriteCount={favorites.size}
+            onGenerateMatch={handleGenerateMatch}
+            onClearFavorite={handleClearFavorite}
+            isGeneratingMatch={isGeneratingMatch}
         />
     );
 
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: colors.background.default }}>
-            <Header 
-                favoriteCount={favorites.size}
-                onGenerateMatch={handleGenerateMatch}
-            />
-            <Container maxWidth="xl" sx={{ mt: '80px', p: { xs: 1, md: 3 }, flexGrow: 1 }}>
+        <Box sx={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            minHeight: '100vh', 
+            background: colors.background.gradient,
+            position: 'relative',
+            '&::before': {
+                content: '""',
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'url(/paw-pattern.svg) repeat',
+                opacity: 0.07,
+                zIndex: -1,
+            },
+        }}>
+            <Header />
+            <Container maxWidth="xl" sx={{ mt: '80px', p: { xs: 1, md: 3 }, flexGrow: 1, zIndex: 1 }}>
                 <Grid container spacing={3}>
                     {!isMobile && (
-                        <Grid item md={3} sx={{ position: 'sticky', top: '80px', height: 'calc(100vh - 80px)', overflowY: 'auto' }}>
+                        <Grid item md={3} sx={{ 
+                            position: 'sticky', 
+                            top: '80px', 
+                            height: 'calc(100vh - 100px)',
+                            overflowY: 'auto',
+                            pr: 1,
+                        }}>
                            {filtersSidebarComponent}
                         </Grid>
                     )}

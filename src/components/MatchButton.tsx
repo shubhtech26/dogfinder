@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button, Box, CircularProgress, Typography } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
-import { Favorite, Pets } from '@mui/icons-material';
+import { Pets } from '@mui/icons-material';
 import { colors } from '../theme/theme';
 
 const pulse = keyframes`
@@ -25,10 +25,14 @@ const StyledMatchButton = styled(Button)(({ theme }) => ({
     borderRadius: '16px',
     boxShadow: `0 3px 5px 2px ${colors.primary.dark}4D`, // 4D for opacity ~0.3
     color: colors.text.light,
-    padding: '10px 20px',
+    padding: '10px 24px', // Adjusted padding for single icon
+    minHeight: '48px', // Ensure consistent height
     position: 'relative',
     overflow: 'hidden',
     transition: 'background 0.3s ease, box-shadow 0.3s ease',
+    textTransform: 'none', // Ensure text case is as intended
+    fontSize: '0.95rem', // Slightly adjust font size if needed
+    fontWeight: 600,
     '&:hover': {
         background: `linear-gradient(45deg, ${colors.primary.light} 30%, ${colors.primary.main} 90%)`,
         boxShadow: `0 4px 8px 3px ${colors.primary.dark}66`, // 66 for opacity ~0.4
@@ -40,14 +44,12 @@ const StyledMatchButton = styled(Button)(({ theme }) => ({
         background: 'rgba(0,0,0,0.12)',
         color: 'rgba(0,0,0,0.26)',
         boxShadow: 'none',
+        animation: 'none', // Stop animation when disabled
+    },
+    '& .MuiButton-startIcon': {
+        marginRight: '6px', // Adjust spacing if icon is solo
     },
 }));
-
-const IconWrapper = styled(Box)({
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-});
 
 interface Props {
     favoriteCount: number;
@@ -59,47 +61,15 @@ const MatchButton: React.FC<Props> = ({ favoriteCount, isLoading, onClick }) => 
     const isActive = favoriteCount > 0;
 
     return (
-        <Box sx={{ position: 'relative' }}>
+        <Box sx={{ position: 'relative', width: '100%' }}>
             <StyledMatchButton
                 onClick={onClick}
                 disabled={!isActive || isLoading}
                 className={isActive && !isLoading ? 'active' : ''}
-                startIcon={
-                    <IconWrapper>
-                        {isLoading ? (
-                            <CircularProgress size={20} color="inherit" />
-                        ) : (
-                            <>
-                                <Favorite sx={{ color: isActive ? colors.text.light : undefined }} />
-                                <Pets sx={{ color: isActive ? colors.text.light : undefined }} />
-                            </>
-                        )}
-                    </IconWrapper>
-                }
+                startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <Pets />}
+                fullWidth // Make button take full width of its container in SearchFilters
             >
-                {isLoading ? (
-                    'Finding Match...'
-                ) : (
-                    <>
-                        Generate Match
-                        {favoriteCount > 0 && (
-                            <Typography
-                                component="span"
-                                sx={{
-                                    ml: 1,
-                                    background: 'rgba(255, 255, 255, 0.25)',
-                                    borderRadius: '12px',
-                                    padding: '2px 8px',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 'bold',
-                                    color: colors.text.light,
-                                }}
-                            >
-                                {favoriteCount}
-                            </Typography>
-                        )}
-                    </>
-                )}
+                {isLoading ? 'Revealing...' : 'Reveal My Match!'}
             </StyledMatchButton>
         </Box>
     );
