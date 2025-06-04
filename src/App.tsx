@@ -1,29 +1,11 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import { ThemeProvider, CssBaseline } from '@mui/material';
 import { AuthProvider } from './context/AuthContext';
 import Login from './pages/Login';
 import Search from './pages/Search';
 import { useAuth } from './context/AuthContext';
-
-const theme = createTheme({
-    palette: {
-        mode: 'light',
-        primary: {
-            main: '#2196f3',
-        },
-        secondary: {
-            main: '#f50057',
-        },
-        background: {
-            default: '#f5f5f5',
-            paper: '#ffffff',
-        },
-    },
-    typography: {
-        fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    },
-});
+import { theme } from './theme/theme';
 
 const queryClient = new QueryClient({
     defaultOptions: {

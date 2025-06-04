@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Box,
     Container,
@@ -21,38 +21,62 @@ import {
     TextField,
     InputAdornment,
     CircularProgress,
+    useTheme,
+    useMediaQuery,
+    Drawer,
+    Fab,
 } from '@mui/material';
-import { Favorite, FavoriteBorder, Search as SearchIcon, Clear as ClearIcon } from '@mui/icons-material';
-import { useQuery, UseQueryResult } from '@tanstack/react-query';
+import { Favorite, FavoriteBorder, Search as SearchIcon, Clear as ClearIcon, FilterList as FilterListIcon, ArrowUpward as ArrowUpwardIcon } from '@mui/icons-material';
+import { useQuery, UseQueryResult, keepPreviousData } from '@tanstack/react-query';
 import { searchDogs, getBreeds, getDogsByIds, generateMatch } from '../services/api';
-import { Dog, SearchFilters, SearchResponse } from '../types';
+import { Dog, SearchFilters as SearchFiltersType, SearchResponse } from '../types';
 import Header from '../components/Header';
 import MatchDialog from '../components/MatchDialog';
+import SearchFiltersComponent from '../components/SearchFilters';
+import { colors } from '../theme/theme';
 
 // Default filter values
-const defaultFilters: SearchFilters = {
+const defaultFilters: SearchFiltersType = {
     breeds: [],
     sort: 'breed:asc',
     size: 20,
     ageMin: 0,
     ageMax: 20,
+    from: 0,
 };
 
 const Search: React.FC = () => {
+    const theme = useTheme();
+    const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+    const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+    const [showScrollTop, setShowScrollTop] = useState(false);
+
     // Initialize state from localStorage if available
-    const [filters, setFilters] = useState<SearchFilters>(() => {
+    const [filters, setFilters] = useState<SearchFiltersType>(() => {
         const savedFilters = localStorage.getItem('searchFilters');
-        return savedFilters ? JSON.parse(savedFilters) : defaultFilters;
+        try {
+            return savedFilters ? JSON.parse(savedFilters) : defaultFilters;
+        } catch (e) {
+            return defaultFilters;
+        }
     });
 
     const [page, setPage] = useState(() => {
         const savedPage = localStorage.getItem('currentPage');
-        return savedPage ? parseInt(savedPage, 10) : 1;
+        try {
+            return savedPage ? parseInt(savedPage, 10) : 1;
+        } catch (e) {
+            return 1;
+        }
     });
 
     const [favorites, setFavorites] = useState<Set<string>>(() => {
         const savedFavorites = localStorage.getItem('favorites');
-        return new Set(savedFavorites ? JSON.parse(savedFavorites) : []);
+        try {
+            return new Set(savedFavorites ? JSON.parse(savedFavorites) : []);
+        } catch (e) {
+            return new Set();
+        }
     });
 
     const [matchedDog, setMatchedDog] = useState<Dog | null>(null);
@@ -61,8 +85,7 @@ const Search: React.FC = () => {
         const savedZipCode = localStorage.getItem('zipCode');
         return savedZipCode || '';
     });
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [searchError, setSearchError] = useState<string | null>(null);
 
     // Persist state changes to localStorage
     useEffect(() => {
@@ -82,35 +105,43 @@ const Search: React.FC = () => {
     }, [zipCode]);
 
     // Query hooks with proper error handling
-    const { data: breeds = [] }: UseQueryResult<string[], Error> = useQuery({
+    const { data: breedsData = [], error: breedsError }: UseQueryResult<string[], Error> = useQuery<string[], Error>({
         queryKey: ['breeds'],
         queryFn: getBreeds,
     });
 
-    const { data: searchResponse, isLoading: isSearchLoading }: UseQueryResult<SearchResponse, Error> = useQuery({
-        queryKey: ['dogs', filters],
-        queryFn: () => searchDogs(filters),
+    const currentFrom = (page - 1) * (filters.size || 20);
+    const { data: searchResponse, isLoading: isSearchLoading, error: dogSearchError }: UseQueryResult<SearchResponse, Error> = 
+        useQuery<SearchResponse, Error, SearchResponse, any>({
+            queryKey: ['dogs', { ...filters, from: currentFrom }],
+            queryFn: () => searchDogs({ ...filters, from: currentFrom }),
+            placeholderData: keepPreviousData,
     });
 
-    const { data: dogs = [], isLoading: isDogsLoading }: UseQueryResult<Dog[], Error> = useQuery({
-        queryKey: ['dogDetails', searchResponse?.resultIds],
-        queryFn: async () => {
-            if (!searchResponse?.resultIds?.length) {
-                return [];
-            }
-            return getDogsByIds(searchResponse.resultIds);
-        },
-        enabled: !!searchResponse?.resultIds?.length,
+    const { data: dogs = [], isLoading: isDogsLoading, error: dogDetailsError }: UseQueryResult<Dog[], Error> = 
+        useQuery<Dog[], Error, Dog[], any>({
+            queryKey: ['dogDetails', searchResponse?.resultIds],
+            queryFn: async () => {
+                if (!searchResponse?.resultIds?.length) return [];
+                return getDogsByIds(searchResponse.resultIds);
+            },
+            enabled: !!searchResponse?.resultIds?.length && searchResponse.resultIds.length > 0,
+            placeholderData: keepPreviousData,
     });
 
-    const handleBreedChange = (event: SelectChangeEvent<string[]>) => {
-        const { value } = event.target;
-        setFilters(prev => ({
-            ...prev,
-            breeds: typeof value === 'string' ? value.split(',') : value,
-        }));
-        setPage(1);
-    };
+    useEffect(() => {
+        const latestError = dogSearchError || dogDetailsError || breedsError;
+        if (latestError) {
+            setSearchError(latestError.message || 'An error occurred while fetching data.');
+        } else {
+            setSearchError(null);
+        }
+    }, [dogSearchError, dogDetailsError, breedsError]);
+
+    const handleFiltersChange = useCallback((newFilters: Partial<SearchFiltersType>) => {
+        setFilters(prev => ({ ...prev, ...newFilters, from: 0 }));
+        setPage(1); 
+    }, []);
 
     const handleSortChange = (event: SelectChangeEvent) => {
         setFilters(prev => ({
@@ -147,8 +178,7 @@ const Search: React.FC = () => {
 
     const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
         setPage(value);
-        const from = (value - 1) * filters.size!;
-        setFilters(prev => ({ ...prev, from }));
+        window.scrollTo(0, 0);
     };
 
     const toggleFavorite = (dogId: string) => {
@@ -163,204 +193,131 @@ const Search: React.FC = () => {
 
     const handleGenerateMatch = async () => {
         if (favorites.size === 0) {
-            setError('Please select a dog to generate a match');
+            setSearchError('Please select a favorite dog first to find a match.');
             return;
         }
-        
+        setSearchError(null);
         try {
-            setIsLoading(true);
-            setError(null);
             const match = await generateMatch(Array.from(favorites));
             const [matchedDogDetails] = await getDogsByIds([match.match]);
             setMatchedDog(matchedDogDetails);
             setIsMatchDialogOpen(true);
         } catch (error) {
             console.error('Failed to generate match:', error);
-            setError('Failed to generate match. Please try again.');
-        } finally {
-            setIsLoading(false);
+            setSearchError(error instanceof Error ? error.message : 'Failed to generate match. Please try again.');
         }
     };
 
-    const clearSearch = () => {
+    const clearSearch = useCallback(() => {
         setFilters(defaultFilters);
         setZipCode('');
         setPage(1);
         localStorage.removeItem('searchFilters');
         localStorage.removeItem('currentPage');
         localStorage.removeItem('zipCode');
+        localStorage.removeItem('favorites');
+        setSearchError(null);
+    }, []);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            if (window.scrollY > 300) {
+                setShowScrollTop(true);
+            } else {
+                setShowScrollTop(false);
+            }
+        };
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    const scrollToTop = () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
+    const isLoadingPrimary = isSearchLoading || (isDogsLoading && (!searchResponse?.resultIds || searchResponse.resultIds.length > 0));
+
+    const filtersSidebarComponent = (
+        <SearchFiltersComponent 
+            filters={filters} 
+            breeds={breedsData} 
+            onFiltersChange={handleFiltersChange} 
+            onClear={clearSearch} 
+            isLoading={isLoadingPrimary}
+        />
+    );
+
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: '#f5f5f5' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: colors.background.default }}>
             <Header 
                 favoriteCount={favorites.size}
                 onGenerateMatch={handleGenerateMatch}
             />
-            <Box sx={{ display: 'flex', flex: 1, p: { xs: 1, md: 2 }, mt: 8 }}>
-                {/* Left Sidebar with Filters */}
-                <Paper 
-                    elevation={2} 
-                    sx={{ 
-                        width: { xs: '100%', md: '300px' },
-                        height: 'fit-content',
-                        p: 2,
-                        mr: { xs: 0, md: 2 },
-                        position: { xs: 'static', md: 'sticky' },
-                        top: '88px',
-                        display: { xs: 'none', md: 'block' }
-                    }}
-                >
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6" sx={{ color: '#1976d2' }}>
-                            Search Filters
-                        </Typography>
-                        <IconButton onClick={clearSearch} size="small">
-                            <ClearIcon />
-                        </IconButton>
-                    </Box>
-
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <TextField
-                            fullWidth
-                            size="small"
-                            label="Zip Code"
-                            value={zipCode}
-                            onChange={handleZipCodeChange}
-                            InputProps={{
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <SearchIcon />
-                                    </InputAdornment>
-                                ),
-                            }}
-                        />
-
-                        <FormControl fullWidth size="small">
-                            <InputLabel>Breeds</InputLabel>
-                            <Select
-                                multiple
-                                value={filters.breeds || []}
-                                onChange={handleBreedChange}
-                                renderValue={(selected: string[]) => (
-                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                        {selected.map((value: string) => (
-                                            <Chip key={value} label={value} size="small" />
-                                        ))}
-                                    </Box>
-                                )}
+            <Container maxWidth="xl" sx={{ mt: '80px', p: { xs: 1, md: 3 }, flexGrow: 1 }}>
+                <Grid container spacing={3}>
+                    {!isMobile && (
+                        <Grid item md={3} sx={{ position: 'sticky', top: '80px', height: 'calc(100vh - 80px)', overflowY: 'auto' }}>
+                           {filtersSidebarComponent}
+                        </Grid>
+                    )}
+                    <Grid item xs={12} md={isMobile ? 12 : 9}>
+                        {searchError && (
+                            <Paper 
+                                elevation={0} 
+                                sx={{ 
+                                    p: 2, 
+                                    mb: 2, 
+                                    bgcolor: colors.error.light + '33',
+                                    color: colors.error.dark,
+                                    border: `1px solid ${colors.error.main}`,
+                                    borderRadius: '12px',
+                                    textAlign: 'center'
+                                }}
                             >
-                                {breeds.map((breed: string) => (
-                                    <MenuItem key={breed} value={breed}>
-                                        {breed}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
+                                <Typography variant="body1">{searchError}</Typography>
+                            </Paper>
+                        )}
 
-                        <Box sx={{ px: 1 }}>
-                            <Typography gutterBottom>Age Range</Typography>
-                            <Slider
-                                value={[filters.ageMin || 0, filters.ageMax || 20]}
-                                onChange={handleAgeRangeChange}
-                                valueLabelDisplay="auto"
-                                min={0}
-                                max={20}
-                            />
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Typography variant="body2" color="text.secondary">
-                                    {filters.ageMin} years
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    {filters.ageMax} years
-                                </Typography>
+                        {isLoadingPrimary && (
+                            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+                                <CircularProgress sx={{ color: colors.primary.main }} size={60}/>
                             </Box>
-                        </Box>
+                        )}
 
-                        <FormControl fullWidth size="small">
-                            <InputLabel>Sort</InputLabel>
-                            <Select value={filters.sort || ''} onChange={handleSortChange}>
-                                <MenuItem value="breed:asc">Breed (A-Z)</MenuItem>
-                                <MenuItem value="breed:desc">Breed (Z-A)</MenuItem>
-                                <MenuItem value="name:asc">Name (A-Z)</MenuItem>
-                                <MenuItem value="name:desc">Name (Z-A)</MenuItem>
-                                <MenuItem value="age:asc">Age (Youngest)</MenuItem>
-                                <MenuItem value="age:desc">Age (Oldest)</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Box>
-                </Paper>
+                        {!isLoadingPrimary && dogs.length === 0 && !searchError && (
+                            <Paper 
+                                elevation={0} 
+                                sx={{ 
+                                    p: {xs: 2, md: 4}, 
+                                    textAlign: 'center',
+                                    bgcolor: colors.background.paper,
+                                    borderRadius: '16px',
+                                    border: `1px solid ${colors.custom.cardBorder}`,
+                                }}
+                            >
+                                <Typography variant="h5" sx={{ color: colors.text.primary, mb: 1 }}>
+                                    No Paws Found!
+                                </Typography>
+                                <Typography sx={{ color: colors.text.secondary }}>
+                                    Try adjusting your search filters or check back later for new furry friends.
+                                </Typography>
+                            </Paper>
+                        )}
 
-                {/* Mobile Filters */}
-                <Box sx={{ display: { xs: 'block', md: 'none' }, mb: 2, width: '100%' }}>
-                    <Paper elevation={2} sx={{ p: 2, mb: 2 }}>
-                        {/* Same filter content as desktop, just rendered for mobile */}
-                    </Paper>
-                </Box>
-
-                {/* Main Content Area */}
-                <Box sx={{ flex: 1 }}>
-                    {error && (
-                        <Paper 
-                            elevation={0} 
-                            sx={{ 
-                                p: 2, 
-                                mb: 2, 
-                                bgcolor: '#ffebee',
-                                color: '#c62828',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                            }}
-                        >
-                            <Typography>{error}</Typography>
-                        </Paper>
-                    )}
-
-                    {(isSearchLoading || isDogsLoading || isLoading) && (
-                        <Box sx={{ 
-                            display: 'flex', 
-                            justifyContent: 'center', 
-                            alignItems: 'center',
-                            minHeight: '200px'
-                        }}>
-                            <CircularProgress />
-                        </Box>
-                    )}
-
-                    {!isSearchLoading && !isDogsLoading && dogs.length === 0 && (
-                        <Paper 
-                            elevation={2} 
-                            sx={{ 
-                                p: 4, 
-                                textAlign: 'center',
-                                bgcolor: '#fff',
-                                borderRadius: 2
-                            }}
-                        >
-                            <Typography variant="h6" color="text.secondary" gutterBottom>
-                                No Dogs Found
-                            </Typography>
-                            <Typography color="text.secondary">
-                                Try adjusting your search filters to find more dogs.
-                            </Typography>
-                        </Paper>
-                    )}
-
-                    {!isSearchLoading && !isDogsLoading && dogs.length > 0 && (
-                        <>
-                            <Grid container spacing={2}>
+                        {!isLoadingPrimary && dogs.length > 0 && (
+                            <Grid container spacing={isMobile ? 2 : 3}>
                                 {dogs.map((dog: Dog) => (
                                     <Grid item key={dog.id} xs={12} sm={6} md={4} lg={3}>
                                         <Card 
-                                            elevation={2}
                                             sx={{ 
                                                 height: '100%',
                                                 display: 'flex',
                                                 flexDirection: 'column',
-                                                transition: 'transform 0.2s',
+                                                bgcolor: colors.background.card,
+                                                transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
                                                 '&:hover': {
-                                                    transform: 'translateY(-4px)'
+                                                    transform: 'translateY(-6px)',
+                                                    boxShadow: `0 8px 16px ${colors.primary.main}33`,
                                                 }
                                             }}
                                         >
@@ -371,69 +328,128 @@ const Search: React.FC = () => {
                                                 alt={dog.name}
                                                 sx={{ objectFit: 'cover' }}
                                             />
-                                            <CardContent sx={{ flexGrow: 1 }}>
-                                                <Box sx={{ 
-                                                    display: 'flex', 
-                                                    justifyContent: 'space-between', 
-                                                    alignItems: 'center', 
-                                                    mb: 1 
-                                                }}>
-                                                    <Typography variant="h6" component="div" sx={{ color: '#1976d2' }}>
+                                            <CardContent sx={{ flexGrow: 1, p: 2 }}>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                                    <Typography variant="h6" component="div" sx={{ color: colors.primary.dark, fontWeight: 'bold' }}>
                                                         {dog.name}
                                                     </Typography>
                                                     <IconButton
                                                         onClick={() => toggleFavorite(dog.id)}
-                                                        color="primary"
                                                         sx={{ 
+                                                            color: favorites.has(dog.id) ? colors.primary.main : colors.text.secondary,
+                                                            p: '6px',
                                                             '&:hover': {
-                                                                transform: 'scale(1.1)'
+                                                                backgroundColor: `${colors.primary.main}1A`,
                                                             }
                                                         }}
                                                     >
-                                                        {favorites.has(dog.id) ? <Favorite /> : <FavoriteBorder />}
+                                                        {favorites.has(dog.id) ? <Favorite fontSize="medium" /> : <FavoriteBorder fontSize="medium" />}
                                                     </IconButton>
                                                 </Box>
-                                                <Typography variant="body2" color="text.secondary">
-                                                    Breed: {dog.breed}
+                                                <Typography variant="body2" sx={{ color: colors.text.secondary, mb: 0.5 }}>
+                                                    <strong>Breed:</strong> {dog.breed}
                                                 </Typography>
-                                                <Typography variant="body2" color="text.secondary">
-                                                    Age: {dog.age} years
+                                                <Typography variant="body2" sx={{ color: colors.text.secondary, mb: 0.5 }}>
+                                                    <strong>Age:</strong> {dog.age} years
                                                 </Typography>
-                                                <Typography variant="body2" color="text.secondary">
-                                                    Location: {dog.zip_code}
+                                                <Typography variant="body2" sx={{ color: colors.text.secondary }}>
+                                                    <strong>Location:</strong> {dog.zip_code}
                                                 </Typography>
                                             </CardContent>
                                         </Card>
                                     </Grid>
                                 ))}
                             </Grid>
+                        )}
 
-                            {searchResponse && searchResponse.total > 0 && (
-                                <Box sx={{ 
-                                    mt: 4, 
-                                    mb: 2, 
-                                    display: 'flex', 
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    gap: 2
-                                }}>
-                                    <Typography color="text.secondary">
-                                        Showing {dogs.length} of {searchResponse.total} dogs
-                                    </Typography>
-                                    <Pagination
-                                        count={Math.ceil((searchResponse?.total || 0) / filters.size!)}
-                                        page={page}
-                                        onChange={handlePageChange}
-                                        color="primary"
-                                        size="large"
-                                        disabled={isSearchLoading || isDogsLoading}
-                                    />
-                                </Box>
-                            )}
-                        </>
-                    )}
+                        {searchResponse && searchResponse.total > (filters.size || 20) && !isLoadingPrimary && dogs.length > 0 && (
+                            <Box sx={{ mt: 4, mb: 2, display: 'flex', justifyContent: 'center' }}>
+                                <Pagination
+                                    count={Math.ceil((searchResponse?.total || 0) / (filters.size || 20))}
+                                    page={page}
+                                    onChange={handlePageChange}
+                                    color="primary"
+                                    size="large"
+                                    sx={{
+                                        '& .MuiPaginationItem-root': {
+                                            color: colors.text.secondary,
+                                        },
+                                        '& .MuiPaginationItem-root.Mui-selected': {
+                                            backgroundColor: colors.primary.main,
+                                            color: colors.text.light,
+                                            fontWeight: 'bold',
+                                        },
+                                        '& .MuiPaginationItem-root:hover': {
+                                            backgroundColor: `${colors.primary.light}4D`,
+                                        },
+                                    }}
+                                />
+                            </Box>
+                        )}
+                    </Grid>
+                </Grid>
+            </Container>
+
+            {isMobile && (
+                <Fab 
+                    color="secondary" 
+                    aria-label="filters" 
+                    onClick={() => setMobileFiltersOpen(true)}
+                    sx={{
+                        position: 'fixed',
+                        bottom: 16,
+                        right: 16,
+                        bgcolor: colors.primary.main,
+                        color: colors.text.light,
+                        '&:hover': {
+                            bgcolor: colors.primary.dark
+                        }
+                    }}
+                >
+                    <FilterListIcon />
+                </Fab>
+            )}
+            {showScrollTop && (
+                 <Fab 
+                    size="small"
+                    onClick={scrollToTop}
+                    aria-label="scroll back to top"
+                    sx={{
+                        position: 'fixed',
+                        bottom: isMobile ? 80 : 16,
+                        right: 16,
+                        bgcolor: colors.secondary.main,
+                        color: colors.text.primary,
+                        '&:hover': {
+                            bgcolor: colors.secondary.dark
+                        }
+                    }}
+                >
+                    <ArrowUpwardIcon />
+                </Fab>
+            )}
+
+            <Drawer
+                anchor="bottom"
+                open={isMobile && mobileFiltersOpen}
+                onClose={() => setMobileFiltersOpen(false)}
+                PaperProps={{
+                    sx: {
+                        height: '80vh',
+                        borderTopLeftRadius: 16,
+                        borderTopRightRadius: 16,
+                        p: 2,
+                        bgcolor: colors.background.default
+                    }
+                }}
+            >
+                <Box sx={{ overflowY: 'auto', flexGrow: 1, p:1 }}>
+                    {filtersSidebarComponent}
                 </Box>
-            </Box>
+                <Button onClick={() => setMobileFiltersOpen(false)} variant="contained" sx={{ mt: 2, bgcolor: colors.primary.main }}>
+                    Show Results
+                </Button>
+            </Drawer>
 
             <MatchDialog
                 open={isMatchDialogOpen}
