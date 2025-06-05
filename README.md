@@ -1,6 +1,11 @@
-# Dog Finder App
+# 🐶 Dog Finder App
 
-A web application that helps users search through a database of shelter dogs and find their perfect match! Built with React, TypeScript, and Material-UI.
+A web application that helps users search through a database of shelter dogs and find their perfect match! Built with **React**, **TypeScript**, **Vite**, and **Material-UI**.
+
+> [Live Demo](https://dogfinder-9wdz.vercel.app/)  
+> [GitHub Repository](https://github.com/shubhtech26/dogfinder).
+
+
 
 ## Features
 
@@ -20,7 +25,7 @@ A web application that helps users search through a database of shelter dogs and
 
 1. Clone the repository:
 ```bash
-git clone <your-repo-url>
+git clone <https://github.com/shubhtech26/dogfinder >
 cd fetch-dogs-app
 ```
 
